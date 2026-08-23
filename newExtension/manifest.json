@@ -1,0 +1,63 @@
+{
+  "manifest_version": 3,
+  "incognito": "spanning",
+  "name": "NewExtension",
+  "description": "A fresh Chrome extension scaffold.",
+  "version": "1.0.0",
+  "action": {
+    "default_popup": "src/pages/popup/index.html",
+    "default_icon": {
+      "32": "icon-32.png"
+    }
+  },
+  "icons": {
+    "128": "icon-128.png"
+  },
+  "commands": {
+    "open-sidebar": {
+      "suggested_key": {
+        "default": "Alt+Shift+W"
+      },
+      "description": "Open Webchat sidebar"
+    }
+  },
+  "side_panel": {
+    "default_path": "src/pages/sidepanel/index.html"
+  },
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs",
+    "scripting",
+    "sidePanel",
+    "declarativeNetRequest"
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "chatgpt_frame_rules",
+        "enabled": true,
+        "path": "rules/chatgpt-frame-rules.json"
+      }
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://www.chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": ["src/chatgpt/index.ts"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self';"
+  }
+}

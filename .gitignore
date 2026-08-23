@@ -1,0 +1,7 @@
+api/data/
+node_modules/
+dist/
+dist_chrome/
+.env
+*.log
+.DS_Store

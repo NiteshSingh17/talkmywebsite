@@ -1,0 +1,12 @@
+{
+  "name": "webchat",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Webchat — bridge ChatGPT browsing to your open browser tabs",
+  "scripts": {
+    "api:dev": "npm run start:dev --prefix api",
+    "api:build": "npm run build --prefix api",
+    "ext:dev": "npm run dev:chrome --prefix extension",
+    "ext:build": "npm run build:chrome --prefix extension"
+  }
+}
