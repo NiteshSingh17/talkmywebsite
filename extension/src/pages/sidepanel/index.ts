@@ -34,7 +34,7 @@ async function boot(): Promise<void> {
 
     loadingText.textContent = 'Opening ChatGPT…';
     pageTitle.textContent = 'ChatGPT Sidebar';
-    frame.src = 'https://chatgpt.com/';
+    frame.src = 'https://chatgpt.com/?temporary-chat=true';
 }
 
 void boot();

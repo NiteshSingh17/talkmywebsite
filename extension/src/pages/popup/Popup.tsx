@@ -102,7 +102,7 @@ export default function Popup() {
 
       {/* Footer hint */}
       <div style={styles.footer}>
-        Sidebar will open beside your current page — no tab switching needed.
+        Sidebar will open beside your current page no tab switching needed.
       </div>
     </div>
   );

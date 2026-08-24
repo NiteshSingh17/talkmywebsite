@@ -82,7 +82,7 @@ export async function prepareSidepanel(
 
   const checkHtml = await scrapePageHtml(page.pageId);
   if (checkHtml.includes('WEBCHAT_PAGE_NOT_OPEN')) {
-    throw new Error('Could not read the tab — make sure it is a normal web page.');
+    throw new Error('Could not read the tab make sure it is a normal web page.');
   }
 
   lastPreparedPageId = page.pageId;

@@ -1,99 +1,173 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# TalkMyWebsite — API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+The NestJS backend that powers TalkMyWebsite. It receives live HTML from the Chrome extension over WebSocket, exposes secure scrape endpoints for ChatGPT to fetch, and manages room/session state.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://coveralls.io/github/nestjs/nest?branch=master" target="_blank"><img src="https://coveralls.io/repos/github/nestjs/nest/badge.svg?branch=master#9" alt="Coverage" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Architecture
 
-## Description
-
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
-
-```bash
-$ npm install
+```
+newExtension (Chrome)
+      │  WebSocket (ws://localhost:3000/ws)
+      ▼
+ExtensionGateway  ──registers──▶  RoomsService  ──stores──▶  rooms-store.json
+                                       │
+                              waits for HTML request
+                                       │
+     ChatGPT server  ──GET──▶  ScrapeController
+                                       │
+                              requestHtml() over WS
+                                       │
+                              Extension scrapes tab
+                                       │
+                              returns HTML to ChatGPT
 ```
 
-## Compile and run the project
+## Endpoints
 
-```bash
-# development
-$ npm run start
+### Health
 
-# watch mode
-$ npm run start:dev
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/v1/health` | Returns `{"ok":true}` — use this to verify the API and tunnel are reachable |
 
-# production mode
-$ npm run start:prod
+### Scrape
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/v1/scrape/:roomId/:pageId/:secret` | Fetch live HTML for a registered page |
+| `GET` | `/v1/scrape/:roomId/:pageId/:secret/b/:cacheBust` | Same, with path-based cache-busting (preferred — survives CDN/proxy caches) |
+
+Both endpoints accept an optional `?sidebar=true` query parameter when the request originates from the ChatGPT sidebar.
+
+**Response codes:**
+
+| Status | Meaning |
+|---|---|
+| `200` | HTML body of the live page |
+| `401` | Missing or invalid access token |
+| `424` | Page not open in the browser |
+| `503` | Extension offline |
+| `504` | Scrape timed out (default 12 s) |
+
+### WebSocket (`/ws`)
+
+The extension opens a persistent WebSocket connection on startup.
+
+**Extension → API messages:**
+
+```jsonc
+// Register the extension session
+{ "type": "register", "roomId": "uuid", "roomSecret": "uuid" }
+
+// Respond with scraped HTML
+{ "type": "html", "pageId": "uuid", "html": "<html>…</html>" }
+
+// Report a page-not-open error
+{ "type": "html", "pageId": "uuid", "html": "<!-- WEBCHAT_PAGE_NOT_OPEN -->" }
 ```
 
-## Run tests
+**API → Extension messages:**
+
+```jsonc
+// Request fresh HTML from a tab
+{ "type": "scrape", "pageId": "uuid", "clientBust": "1234567890", "fromSidebar": false }
+```
+
+## Setup
 
 ```bash
-# unit tests
-$ npm run test
+npm install
+```
 
-# e2e tests
-$ npm run test:e2e
+### Environment Variables
 
-# test coverage
-$ npm run test:cov
+Copy `.env.example` to `.env`:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Description | Default |
+|---|---|---|
+| `PORT` | Port the API listens on | `3000` |
+| `SCRAPE_TIMEOUT_MS` | Max ms to wait for the extension to return HTML | `12000` |
+
+## Running
+
+```bash
+# Development (watch mode — restarts on file changes)
+npm run start:dev
+
+# Production
+npm run build
+npm run start:prod
+```
+
+API runs at `http://localhost:3000`.
+
+## Testing
+
+```bash
+# Unit tests
+npm run test
+
+# End-to-end tests (API must be running on :3000)
+npm run test:e2e
+
+# Integration test — WS registration + scrape round-trip
+npm run test:integration
+
+# With coverage
+npm run test:cov
+```
+
+## Project Structure
+
+```
+src/
+  app.module.ts          Root module
+  main.ts                Bootstrap — sets global prefix /v1, CORS, WS adapter
+  common/
+    dto/
+      ws-messages.ts     Shared TypeScript types for WS message payloads
+  gateway/
+    extension.gateway.ts WebSocket gateway — handles register + html messages
+    gateway.module.ts
+  health/                GET /v1/health endpoint
+  rooms/
+    rooms.service.ts     Core session logic — page registry, secret validation, HTML relay
+    rooms-store.ts       JSON file persistence for room secrets across restarts
+    rooms.module.ts
+  scrape/
+    scrape.controller.ts GET /v1/scrape endpoints
+    scrape-cache.ts      Cache-control header helpers + HTML body wrapper
+    scrape.module.ts
+data/
+  rooms-store.json       Auto-created at runtime — persists room secrets
+scripts/
+  test-integration.mjs   Integration test script
+test/
+  jest-e2e.json
+```
+
+## Linting & Formatting
+
+```bash
+npm run lint    # ESLint --fix
+npm run format  # Prettier
 ```
 
 ## Deployment
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+The API must be reachable by ChatGPT's servers for the scrape feature to work. Use a public HTTPS tunnel in development or deploy to a cloud host like Render, Railway, or Fly.io.
 
 ```bash
-$ npm install -g mau
-$ mau deploy
+# Cloudflare Tunnel (recommended — no timeout issues)
+cloudflared tunnel --url http://localhost:3000
+
+# or ngrok
+ngrok http 3000
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Set `VITE_API_PUBLIC_URL` in `newExtension/.env` to your tunnel/deploy URL, then rebuild the extension.
 
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+> **Note:** `data/rooms-store.json` is gitignored. Room secrets persist across API restarts but reset if the file is deleted (e.g. on a fresh deploy). Always copy a fresh scrape URL from the extension popup after redeploying.

@@ -63,7 +63,7 @@ export function connectWs(): void {
 
   ws.onerror = () => {
     wsConnected = false;
-    console.warn('[NewExtension] WebSocket error — check VITE_WS_URL:', WS_URL);
+    console.warn('[NewExtension] WebSocket error check VITE_WS_URL:', WS_URL);
   };
 }
 

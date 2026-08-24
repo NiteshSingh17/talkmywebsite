@@ -28,24 +28,32 @@ export async function scrapePageHtml(
 
 async function doScrape(pageId: string, fromSidebar: boolean): Promise<string> {
   const page = getPage(pageId);
-  if (!page) {
-    return PAGE_NOT_OPEN;
+
+  let tab: chrome.tabs.Tab | null = null;
+
+  if (fromSidebar) {
+    // Prefer the registered tab for this pageId; the side panel may have stolen
+    // window focus so getActiveHttpTab() could return the wrong tab.
+    tab = page ? await findTabForPage(page) : null;
+    if (!tab?.id) {
+      tab = await getActiveHttpTab();
+    }
+  } else {
+    if (!page) return PAGE_NOT_OPEN;
+    tab = await findTabForPage(page);
   }
 
-  let tab = fromSidebar
-    ? await getActiveHttpTab()
-    : await findTabForPage(page);
   if (!tab?.id) {
     return PAGE_NOT_OPEN;
   }
 
-  await syncPageFromTab(page, tab);
+  if (page) await syncPageFromTab(page, tab);
 
   await waitForPageSettle(tab.id, { timeoutMs: 2_500 });
 
   const tabId = tab.id;
   tab = (await chrome.tabs.get(tabId)) ?? tab;
-  await syncPageFromTab(page, tab);
+  if (page) await syncPageFromTab(page, tab);
 
   const snap = await readLivePage(tabId);
 
@@ -104,7 +112,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/** Side panel is not a tab — scrape the focused window's active http(s) page. */
+/** Side panel is not a tab scrape the focused window's active http(s) page. */
 async function getActiveHttpTab(): Promise<chrome.tabs.Tab | null> {
   const [focused] = await chrome.tabs.query({
     active: true,

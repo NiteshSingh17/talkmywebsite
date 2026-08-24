@@ -6,13 +6,12 @@ export function buildOnboardingPrompt(_roomId: string, _platformLabel = 'ChatGPT
   return `You are a Webchat page assistant. A user wants you to answer questions about a specific web page.
 
 HOW TO READ THE PAGE:
-- Fetch the scrape URL below to get the current page HTML. You have direct HTTP access — do NOT ask the user to paste anything.
-- The scrape URL format is: ${base}/v1/scrape/{roomId}/{pageId}/{secret}?cb=<timestamp>
+- Fetch the scrape URL below to get the current page HTML. You have direct HTTP access do NOT ask the user to paste anything.
+- The scrape URL format is: ${base}/v1/scrape/{roomId}/{pageId}/{secret}/b/{timestamp}
 
-AFTER EACH COMMAND:
-- The browser replies with: {"webchat":true,"pageId":"...","success":true,"nextScrapeUrl":"<url>"}
-- ALWAYS fetch the nextScrapeUrl to get fresh HTML before your next response.
-- NEVER reuse an old scrape URL.
+IMPORTANT CACHE BUSTING:
+- Every fetch MUST use a different /b/{timestamp} value (use current Unix milliseconds).
+- NEVER reuse the same URL twice construct a fresh one before each fetch.
 
 START: Fetch the scrape URL the user provides, read the content, and answer their question.`;
 }

@@ -1,16 +1,64 @@
-# Webchat
+# TalkMyWebsite - Free
 
-Bridge ChatGPT’s built-in browsing to pages open in **your** Chrome browser via a Chrome extension and NestJS API.
+> **Chat with pages ChatGPT can never reach** — your LinkedIn feed, Twitter/X timeline, Gmail, banking dashboard, internal tools, or any site that requires you to be logged in.
+
+---
+
+## The problem this solves
+
+You can paste a public URL into ChatGPT and ask it to browse that page. But **ChatGPT's servers can't log in as you**. That means it completely fails for:
+
+| Situation | Why it fails without TalkMyWebsite |
+|---|---|
+| **Authenticated pages** | LinkedIn, Twitter/X, Gmail, Notion, Slack, banking — ChatGPT is not logged in as you |
+| **Dynamic / personalised feeds** | Your social media feed is unique to you and changes every refresh — a URL is meaningless to ChatGPT |
+| **Internal / private tools** | Company intranets, dashboards behind VPN, localhost apps |
+| **Pages that block bots** | Many sites detect ChatGPT's crawler and return an error or empty content |
+
+TalkMyWebsite runs entirely inside **your own browser** — where you are already logged in — and serves the real page content to ChatGPT through a temporary private URL.
+
+---
+
+## How it works
+
+```
+Your Browser (logged in as you)
+  │
+  ├── Tab: LinkedIn / Twitter / Gmail / any private site
+  │         ↑ your session & cookies are here
+  │
+  └── TalkMyWebsite Chrome Extension
+        │
+        ├── Reads the fully-rendered HTML from your active tab
+        │   (authenticated, personalised, dynamic — exactly what you see)
+        │
+        ├── Sends it to the local API running on your machine
+        │
+        └── Local API creates a temporary public URL via your tunnel
+              │
+              └──► ChatGPT fetches that URL and gets your private page content
+                          │
+                          └── ChatGPT sidebar (Alt+Shift+W) is already open
+                              beside your tab with full context injected
+```
+
+**ChatGPT never touches the real website.** It fetches a temporary URL your own machine generates — containing the already-rendered, already-authenticated HTML your browser captured for it.
+
+---
 
 ## Architecture
 
-- **Extension** registers open tabs, serves stripped HTML, runs page commands (click, navigate, scroll).
-- **API** exposes `GET /v1/scrape/{roomId}/{pageId}?t={secret}` and a WebSocket at `/ws` for the extension.
-- **ChatGPT** (chatgpt.com only): Webchat bar, paste-to-temp-URL, command auto-reply.
+| Component | Role |
+|---|---|
+| **Extension** (`newExtension/`) | Captures tab HTML, opens ChatGPT sidebar, injects page context into every message, executes AI page commands |
+| **API** (`api/`) | NestJS server — manages rooms, serves scraped HTML at temp URLs, bridges extension ↔ ChatGPT via WebSocket |
+| **Tunnel** (Cloudflare / ngrok) | Makes your local API reachable by ChatGPT's servers over public HTTPS |
 
-## Quick start
+---
 
-### 1. API
+## Quick Start
+
+### 1. Start the API
 
 ```bash
 cd api
@@ -18,91 +66,52 @@ npm install
 npm run start:dev
 ```
 
-Runs at `http://localhost:3000` — WebSocket `ws://localhost:3000/ws`.
+Runs at `http://localhost:3000` — WebSocket at `ws://localhost:3000/ws`.
 
-### 2. Extension
+### 2. Expose it publicly (so ChatGPT can reach it)
 
-```bash
-cd extension
-npm install
-npm run dev:chrome
-```
-
-Load unpacked: `extension/dist_chrome` in `chrome://extensions`.
-
-**Incognito:** There is no manifest permission for this — Chrome requires you to opt in manually. After loading the extension, open `chrome://extensions` → **Webchat** → **Details** → turn on **Allow in Incognito**. The manifest uses `"incognito": "spanning"` so one extension instance can bridge an incognito ChatGPT/Claude tab with tabs in normal windows. Reload the extension after changing the manifest.
-
-Default API URL is `http://localhost:3000` (see `extension/.env.example`).
-
-**Fresh scrapes:** Temp URLs include `?cb=<timestamp>`. Each new copy/paste gets a new `cb` so ChatGPT/Claude do not use a cached page. Re-scrape after commands by updating `cb` or copying the URL again.
-
-### 3. Public HTTPS (for ChatGPT browsing)
-
-ChatGPT’s server must reach your scrape URL. In development use a tunnel:
+ChatGPT's servers need to fetch your scrape URLs. Use a tunnel:
 
 ```bash
-# Cloudflare Tunnel
+# Cloudflare Tunnel (recommended — no timeout issues, free)
 cloudflared tunnel --url http://localhost:3000
 
 # or ngrok
 ngrok http 3000
 ```
 
-Set `VITE_API_PUBLIC_URL` in `extension/.env` to the tunnel HTTPS origin, rebuild the extension.
+Copy the HTTPS URL it gives you (e.g. `https://abc.trycloudflare.com`).
 
-**Important:** `VITE_WS_URL` must stay pointed at your **local** API (e.g. `ws://localhost:4000/ws`). Only the public scrape links use ngrok.
-
-### Fixing 401 Unauthorized
-
-ChatGPT means the API rejected the token. Common causes:
-
-1. **Extension not connected** — popup must show green **Connected** before copying a URL.
-2. **API restarted** — copy a **fresh** URL after reconnecting (secrets are now saved under `api/data/rooms-store.json`).
-3. **Wrong port** — ngrok must forward to the same port the API runs on (`PORT=4000`) and `VITE_WS_URL` must match.
-4. **Old URL format** — rebuild extension; new URLs put the token in the **path**:  
-   `https://YOUR-TUNNEL/v1/scrape/{roomId}/{pageId}/{secret}`
-
-Test your URL:
+### 3. Build and load the extension
 
 ```bash
-curl -sS "YOUR_FULL_SCRAPE_URL" | head -5
+cd newExtension
+cp .env.example .env
+# Edit .env: set VITE_API_PUBLIC_URL to your tunnel HTTPS URL
+npm install
+npm run dev:chrome
 ```
 
-You should see HTML, not JSON/text about invalid token.
+Load unpacked in Chrome: `chrome://extensions` → **Developer mode** → **Load unpacked** → select `newExtension/dist_chrome/`.
 
-### Fixing ngrok / ChatGPT “timed out”
+**Incognito support:** After loading, open `chrome://extensions` → **TalkMyWebsite** → **Details** → turn on **Allow in Incognito**. The manifest uses `"incognito": "spanning"` so one instance bridges incognito and normal windows.
 
-ChatGPT and ngrok often give up before 30 seconds. The API now uses a **12s** scrape limit and **never blocks** waiting for a popup during ChatGPT fetches.
-
-1. **Verify tunnel → API (instant)**  
-   ```bash
-   curl -sS "https://YOUR-NGROK/v1/health"
-   ```  
-   Expect `{"ok":true,...}`. If this times out, ngrok is on the wrong port or API is not running.
-
-2. **Same port everywhere**  
-   ```bash
-   PORT=4000 npm run start:dev   # api
-   ngrok http 4000
-   ```  
-   Extension: `VITE_WS_URL=ws://localhost:4000/ws`
-
-3. **Before ChatGPT browses**  
-   - Popup: green **Connected**  
-   - Target site tab **open**  
-   - **Copy scrape URL** again (popup verifies the tab responds)
-
-4. **Try Cloudflare Tunnel** if ngrok is flaky:  
-   `cloudflared tunnel --url http://localhost:4000`
+---
 
 ## Usage
 
-1. Open any site (e.g. LinkedIn) in a tab.
-2. Open **Webchat** popup → **Copy scrape URL** (or enable Webchat on ChatGPT and paste the normal URL).
-3. On [chatgpt.com](https://chatgpt.com), click **Move to Webchat** for the onboarding prompt.
-4. Toggle **Webchat ON** — pasted site URLs convert to temp scrape URLs automatically.
-5. Ask ChatGPT to browse the temp URL and answer from the page.
-6. If ChatGPT needs interaction, it replies with JSON:
+1. Open any page in a tab — LinkedIn, your email, a private dashboard, anything.
+2. Press **`Alt+Shift+W`** — ChatGPT opens as a sidebar beside the page.
+3. ChatGPT automatically receives the current page content with every message you send.
+4. Ask questions, summarise, extract data, or give instructions — ChatGPT has your full page context.
+
+> **Example:** Open your LinkedIn feed → press `Alt+Shift+W` → ask *"Who posted something about hiring today?"* — ChatGPT reads your actual personalised feed and answers.
+
+---
+
+## Page Actions
+
+If ChatGPT needs to interact with the page it replies with a command JSON:
 
 ```json
 {
@@ -112,42 +121,58 @@ ChatGPT and ngrok often give up before 30 seconds. The API now uses a **12s** sc
 }
 ```
 
-The extension auto-sends `{"webchat":true,"pageId":"...","success":true}` and ChatGPT can scrape again.
+The extension executes it automatically and ChatGPT can scrape the result.
 
-## Environment
+---
 
-| Variable | Where | Default |
-|----------|--------|---------|
-| `PORT` | API | `3000` |
-| `SCRAPE_TIMEOUT_MS` | API | `30000` |
-| `VITE_API_PUBLIC_URL` | Extension build | `http://localhost:3000` |
-| `VITE_WS_URL` | Extension build | `ws://localhost:3000/ws` |
+## Environment Variables
 
-## Automated tests
+| Variable | Where | Default | Description |
+|---|---|---|---|
+| `PORT` | API | `3000` | API listen port |
+| `SCRAPE_TIMEOUT_MS` | API | `30000` | Max time to wait for a scrape response |
+| `VITE_API_PUBLIC_URL` | Extension build | `http://localhost:3000` | Public tunnel URL — ChatGPT fetches scrape links from here |
+| `VITE_WS_URL` | Extension build | `ws://localhost:3000/ws` | Local WebSocket URL — extension connects here |
+
+---
+
+## Troubleshooting
+
+### 401 Unauthorized from ChatGPT
+
+1. Popup must show green **Connected** before copying a URL.
+2. The API was restarted — copy a **fresh** URL after reconnecting.
+3. Wrong port — your tunnel must point to the same port the API runs on.
+
+### ChatGPT times out
+
+1. Verify the tunnel is working: `curl https://YOUR-TUNNEL/v1/health` → should return `{"ok":true}`.
+2. Make sure the target tab is open when ChatGPT fetches the scrape URL.
+3. Switch from ngrok to Cloudflare Tunnel — ngrok's free tier has aggressive timeouts.
+
+---
+
+## Automated Tests
 
 ```bash
-# API must be running on :3000
+# Start API first
 cd api && npm run start:dev
 
-# Another terminal
+# In another terminal
 cd api && npm run test:e2e
-cd api && npm run test:integration   # WS + scrape round-trip
+cd api && npm run test:integration
 ```
 
-## Test checklist
+---
 
-- [ ] Popup shows green “Connected”
-- [ ] Copy scrape URL for active tab
-- [ ] Move to Webchat sends onboarding once per chat
-- [ ] Webchat ON: paste `https://example.com` → temp URL (with tab open)
-- [ ] ChatGPT browses temp URL → HTML returned
-- [ ] Command JSON → auto success reply
-- [ ] Tab closed → scrape 424; popup offers Open tab
-
-## Project layout
+## Project Layout
 
 ```
 webchat/
-  api/          NestJS scrape + WebSocket gateway
-  extension/    Chrome extension (vite-web-extension)
+  api/              NestJS scrape API + WebSocket gateway
+  newExtension/     TalkMyWebsite Chrome extension (Vite + MV3)
+    public/         Static assets & icons (icon-16/32/48/128.png)
+    src/background/ Service worker
+    src/chatgpt/    ChatGPT content script
+    src/pages/      Popup & side panel UI
 ```

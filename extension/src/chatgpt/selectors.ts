@@ -1,4 +1,4 @@
-/** ChatGPT DOM selectors — update when UI changes */
+/** ChatGPT DOM selectors update when UI changes */
 export const SELECTORS = {
   composer:
     '#prompt-textarea, div#prompt-textarea[contenteditable="true"], textarea[data-id="root"], div[contenteditable="true"].ProseMirror, form textarea',
