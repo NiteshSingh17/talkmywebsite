@@ -3,17 +3,14 @@ import { API_PUBLIC_URL, buildTempUrl } from './url';
 export function buildOnboardingPrompt(_roomId: string, _platformLabel = 'ChatGPT'): string {
   const base = API_PUBLIC_URL.replace(/\/$/, '');
 
-  return `You are a Webchat page assistant. A user wants you to answer questions about a specific web page.
+  return `You are a page-reading assistant. A scrape URL is provided below — fetch it to get the current page HTML, then answer the user's question.
 
-HOW TO READ THE PAGE:
-- Fetch the scrape URL below to get the current page HTML. You have direct HTTP access do NOT ask the user to paste anything.
-- The scrape URL format is: ${base}/v1/scrape/{roomId}/{pageId}/{secret}/b/{timestamp}
+Rules:
+- Fetch the URL directly. Do not ask the user to paste anything.
+- Never reuse the same URL twice.
+- Use new URL for each new page.
 
-IMPORTANT CACHE BUSTING:
-- Every fetch MUST use a different /b/{timestamp} value (use current Unix milliseconds).
-- NEVER reuse the same URL twice construct a fresh one before each fetch.
-
-START: Fetch the scrape URL the user provides, read the content, and answer their question.`;
+Scrape URL:`;
 }
 
 /** System instructions + scrape URL (no user question). */
@@ -25,9 +22,7 @@ export function buildInitialPrefix(
 ): string {
   const scrapeUrl = buildTempUrl(roomId, pageId, roomSecret, { sidebar: true });
   const systemPrompt = buildOnboardingPrompt(roomId, platformLabel);
-  return `${systemPrompt}
-
-Scrape URL: ${scrapeUrl}`;
+  return `${systemPrompt} ${scrapeUrl}`;
 }
 
 export function buildPagePrompt(

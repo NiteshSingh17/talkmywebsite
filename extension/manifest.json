@@ -32,11 +32,9 @@
   },
   "permissions": [
     "storage",
-    "activeTab",
-    "tabs",
     "scripting",
     "sidePanel",
-    "declarativeNetRequest"
+    "declarativeNetRequestWithHostAccess"
   ],
   "declarative_net_request": {
     "rule_resources": [
